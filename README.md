@@ -1,5 +1,8 @@
-Lowkey too lazy to write a real README rn so just check out this epic example source code:
+This is HEAVILY inspired by the [Bevy](https://bevy.org/) game engine. But using Zig's comptime, I
+am able to entirely get rid of the `Query` type that is used in Bevy. The code is quite messy, as
+of right now, but I will be documenting it all and refactoring as needed.
 
+This code snippet is subject to change, but as of right now, usage of my ECS looks like this:
 ```zig
 const std = @import("std");
 const Ecs = @import("Ecs.zig");
@@ -18,7 +21,7 @@ pub fn main(init: std.process.Init) !void {
         chudling,
     });
 
-    for (0..4) |_| try ecs.run();
+    for (0..4) |_| try ecs.step();
 
     defer ecs.deinit();
 }
@@ -60,4 +63,21 @@ pub fn chudSpawner(ecs: *Ecs, chud: *Chud) !void {
 pub fn chudling(_: Chudling) !void {
     std.debug.print("I am a chudling :D\n", .{});
 }
+```
+
+Output:
+```
+I am a chud and I have 1 chudling :D
+I am a chudling :D
+I am a chud and I have 2 chudlings :D
+I am a chudling :D
+I am a chudling :D
+I am a chud and I have 3 chudlings :D
+I am a chudling :D
+I am a chudling :D
+I am a chudling :D
+I am a chud and I have 3 chudlings :D
+I am a chudling :D
+I am a chudling :D
+I am a chudling :D
 ```

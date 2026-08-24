@@ -15,7 +15,7 @@ pub fn main(init: std.process.Init) !void {
         chudling,
     });
 
-    for (0..4) |_| try ecs.run();
+    for (0..4) |_| try ecs.step();
 
     defer ecs.deinit();
 }
