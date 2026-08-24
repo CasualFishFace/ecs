@@ -1,6 +1,5 @@
 const std = @import("std");
 const Ecs = @import("Ecs.zig");
-const Query = Ecs.Query;
 
 pub fn main(init: std.process.Init) !void {
     var ecs = Ecs.empty;
