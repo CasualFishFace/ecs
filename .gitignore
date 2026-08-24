@@ -1,0 +1,4 @@
+zig-out/
+.devenv/
+.zig-cache/
+*.o

@@ -1,0 +1,1 @@
+{languages.zig.enable = true;}
