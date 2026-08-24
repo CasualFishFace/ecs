@@ -2,8 +2,8 @@ const std = @import("std");
 const Ecs = @import("Ecs.zig");
 
 pub fn main(init: std.process.Init) !void {
-    var ecs = Ecs.empty;
-    ecs.allocator = init.gpa;
+    var ecs = Ecs.init(init.gpa);
+    defer ecs.deinit();
 
     _ = try ecs.addEntity(.{
         Chud.maxChildren(3),
@@ -15,8 +15,6 @@ pub fn main(init: std.process.Init) !void {
     });
 
     for (0..4) |_| try ecs.step();
-
-    defer ecs.deinit();
 }
 
 pub const Chud = struct {

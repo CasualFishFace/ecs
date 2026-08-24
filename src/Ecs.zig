@@ -7,6 +7,7 @@ const Pool = pool.Pool;
 allocator: Allocator,
 entities: Entity,
 time: Time,
+io: std.Io.Threaded,
 pools: std.StringHashMapUnmanaged(*pool.Erased),
 systems: std.ArrayList(*const fn (*Self) anyerror!void),
 deinitializers: std.ArrayList(*const fn (*Self) void),
@@ -15,18 +16,30 @@ const Self = @This();
 pub const Entity = u32;
 
 pub const Time = struct {
-    delta: f128 = 0,
-    curr: f128 = 0,
+    delta: std.Io.Duration,
+    curr: std.Io.Timestamp,
 };
 
-pub const empty: Self = .{
+const empty: Self = .{
     .allocator = .failing,
     .entities = 0,
-    .time = .{},
+    .time = .{ .delta = .zero, .curr = .zero },
+    .io = .init_single_threaded,
     .pools = .empty,
     .systems = .empty,
     .deinitializers = .empty,
 };
+
+pub fn init(gpa: Allocator) Self {
+    var res = Self.empty;
+    res.allocator = gpa;
+    res.time = .{
+        .delta = .zero,
+        .curr = .now(res.io.io(), .boot),
+    };
+
+    return res;
+}
 
 pub fn deinit(self: *Self) void {
     var erased_it = self.pools.valueIterator();
@@ -43,6 +56,13 @@ pub fn step(self: *Self) !void {
     for (self.systems.items) |system| {
         try system(self);
     }
+
+    const now = std.Io.Timestamp.now(self.io.io(), .boot);
+    const delta = self.time.curr.durationTo(now);
+    self.time = .{
+        .curr = now,
+        .delta = delta,
+    };
 }
 
 pub fn addEntity(self: *Self, components: anytype) !Entity {
