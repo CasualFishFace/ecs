@@ -41,10 +41,13 @@ pub fn SparseSet(comptime I: type, comptime T: type) type {
         pub fn remove(self: *Self, idx: I) ?T {
             if (idx > self.sparse.items.len) return null;
             const didx = self.sparse.items[idx] orelse return null;
-            const sidx: Ecs.Entity = self.dense.items(.idx)[self.dense.len - 1];
+            const slc = self.dense.slice();
+            const sidx: Ecs.Entity = slc.items(.idx)[self.dense.len - 1];
+            const removed = slc.items(.item)[didx];
             self.dense.swapRemove(didx);
             self.sparse.items[idx] = null;
             self.sparse.items[sidx] = didx;
+            return removed;
         }
 
         pub fn put(self: *Self, gpa: Allocator, idx: I, item: T) !void {

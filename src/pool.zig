@@ -57,24 +57,31 @@ pub const Erased = struct {
     const VTable = struct {
         deinit: *const fn (*Erased, Allocator) void,
         destroy: *const fn (*Erased, Allocator) void,
+        remove: *const fn (*Erased, Ecs.Entity) bool,
     };
 
     pub fn impl(comptime P: type) Erased {
         const gen = struct {
             fn deinit(erased: *Erased, gpa: Allocator) void {
                 const self: *P = @fieldParentPtr("erased", erased);
-                self.deinit(gpa);
+                return self.deinit(gpa);
             }
 
             fn destroy(erased: *Erased, gpa: Allocator) void {
                 const self: *P = @fieldParentPtr("erased", erased);
-                self.destroy(gpa);
+                return self.destroy(gpa);
+            }
+
+            fn remove(erased: *Erased, entity: Ecs.Entity) bool {
+                const self: *P = @fieldParentPtr("erased", erased);
+                return self.remove(entity);
             }
         };
 
         return .{ .vtable = &.{
             .deinit = gen.deinit,
             .destroy = gen.destroy,
+            .remove = gen.remove,
         } };
     }
 
@@ -94,26 +101,7 @@ pub const Erased = struct {
         return @fieldParentPtr("erased", erased);
     }
 
-    pub fn putNoClobber(
-        erased: *Erased,
-        gpa: Allocator,
-        entity: Ecs.Entity,
-        component: anytype,
-    ) !void {
-        return erased.vtable.putNoClobber(erased, gpa, entity, component);
-    }
-
-    pub fn put(
-        erased: *Erased,
-        comptime T: type,
-        gpa: Allocator,
-        entity: Ecs.Entity,
-        component: T,
-    ) !void {
-        return erased.vtable.put(erased, gpa, entity, component);
-    }
-
-    pub fn remove(erased: *Erased, entity: Ecs.Entity) !void {
+    pub fn remove(erased: *Erased, entity: Ecs.Entity) bool {
         return erased.vtable.remove(erased, entity);
     }
 };

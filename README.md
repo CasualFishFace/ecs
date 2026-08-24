@@ -34,8 +34,12 @@ pub const Chud = struct {
         };
     }
 
-    pub fn deinit(self: *@This(), gpa: std.mem.Allocator) void {
-        self.children.deinit(gpa);
+    pub fn deinit(self: *@This(), ecs: *Ecs) void {
+        for (self.children.items) |child| {
+            _ = ecs.removeEntity(child);
+        }
+
+        self.children.deinit(ecs.allocator);
         self.* = undefined;
     }
 };

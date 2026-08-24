@@ -65,6 +65,16 @@ pub fn step(self: *Self) !void {
     };
 }
 
+pub fn removeEntity(self: *Self, entity: Entity) bool {
+    var it = self.pools.valueIterator();
+    var existed = false;
+    while (it.next()) |erased| {
+        existed = erased.*.remove(entity) or existed;
+    }
+
+    return existed;
+}
+
 pub fn addEntity(self: *Self, components: anytype) !Entity {
     if (!@typeInfo(@TypeOf(components)).@"struct".is_tuple)
         @compileError("expected a tuple of components");
@@ -94,7 +104,7 @@ fn addDeinitializer(self: *Self, comptime C: type) !void {
     const gen = struct {
         fn deinit(ecs: *Self) void {
             for (ecs.pools.get(name).?.downcast(C).set.dense.items(.item)) |*item| {
-                item.deinit(ecs.allocator);
+                item.deinit(ecs);
             }
         }
     };
