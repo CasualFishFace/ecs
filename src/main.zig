@@ -14,7 +14,7 @@ pub fn main(init: std.process.Init) !void {
         chudling,
     });
 
-    for (0..4) |_| try ecs.step();
+    try ecs.run();
 }
 
 pub const Chud = struct {
@@ -28,6 +28,8 @@ pub const Chud = struct {
         };
     }
 
+    // If your object needs to be deinitialized, make sure to include the method directly inside
+    // its declarations
     pub fn deinit(self: *@This(), ecs: *Ecs) void {
         for (self.children.items) |child| {
             _ = ecs.removeEntity(child);

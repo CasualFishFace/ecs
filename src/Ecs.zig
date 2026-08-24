@@ -52,6 +52,10 @@ pub fn deinit(self: *Self) void {
     self.* = undefined;
 }
 
+pub fn run(self: *Self) !void {
+    while (true) try self.step();
+}
+
 pub fn step(self: *Self) !void {
     for (self.systems.items) |system| {
         try system(self);
