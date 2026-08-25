@@ -17,14 +17,14 @@ pub fn main(init: std.process.Init) !void {
 
     try ecs.addSystems(.{
         chudSpawner,
-        chudling,
+        chudlingProc,
     });
 
     try ecs.run();
 }
 
 pub const Chud = struct {
-    children: std.ArrayList(Ecs.Entity),
+    children: std.AutoHashMapUnmanaged(Ecs.Entity, void),
     max_children: ?Ecs.Entity,
 
     pub fn maxChildren(max_children: ?Ecs.Entity) @This() {
@@ -37,8 +37,10 @@ pub const Chud = struct {
     // If your object needs to be deinitialized, make sure to include the method directly inside
     // its declarations
     pub fn deinit(self: *@This(), ecs: *Ecs) void {
-        for (self.children.items) |child| {
-            _ = ecs.removeEntity(child);
+        var it = self.children.keyIterator();
+        while (it.next()) |child| {
+            _ = ecs.removeEntity(child.*);
+            _ = self.children.remove(child.*);
         }
 
         self.children.deinit(ecs.allocator);
@@ -46,25 +48,34 @@ pub const Chud = struct {
     }
 };
 
-pub const Chudling = struct {};
+pub const Chudling = struct {
+    parent: *Chud,
+};
 
 pub fn chudSpawner(ecs: *Ecs, chud: *Chud) !void {
-    if (chud.max_children == null or chud.children.items.len < chud.max_children.?) {
-        const child = try ecs.addEntity(.{Chudling{}});
-        try chud.children.append(ecs.allocator, child);
+    if (chud.max_children == null or chud.children.size < chud.max_children.?) {
+        const child = try ecs.addEntity(.{Chudling{
+            .parent = chud,
+        }});
+
+        try chud.children.put(ecs.allocator, child, {});
     }
 
-    switch (chud.children.items.len) {
+    switch (chud.children.size) {
         0 => std.debug.print("I am a chud with no chudlings :(\n", .{}),
         1 => std.debug.print("I am a chud and I have 1 chudling :D\n", .{}),
         else => std.debug.print("I am a chud and I have {} chudlings :D\n", .{
-            chud.children.items.len,
+            chud.children.size,
         }),
     }
 }
 
-pub fn chudling(_: Chudling) !void {
+pub fn chudlingProc(ecs: *Ecs, id: Ecs.Entity, random: Ecs.Random, chudling: Chudling) !void {
     std.debug.print("I am a chudling :D\n", .{});
+    if (random.int(u6) < 32) {
+        _ = chudling.parent.children.remove(id);
+        _ = ecs.removeEntity(id);
+    }
 }
 ```
 
