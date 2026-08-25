@@ -8,7 +8,7 @@ const std = @import("std");
 const Ecs = @import("Ecs.zig");
 
 pub fn main(init: std.process.Init) !void {
-    var ecs = Ecs.init(init.gpa);
+    var ecs = Ecs.init(init.gpa, .{});
     defer ecs.deinit();
 
     _ = try ecs.addEntity(.{
@@ -16,8 +16,8 @@ pub fn main(init: std.process.Init) !void {
     });
 
     try ecs.addSystems(.{
-        chudSpawner,
-        chudlingProc,
+        Chud.spawner,
+        Chudling.proc,
     });
 
     try ecs.run();
@@ -46,52 +46,38 @@ pub const Chud = struct {
         self.children.deinit(ecs.allocator);
         self.* = undefined;
     }
+
+    pub fn spawner(chud: *Chud, ecs: *Ecs, random: Ecs.Random) !void {
+        if ((chud.max_children == null or
+            chud.children.size < chud.max_children.?) and
+            random.int(u1) == 0)
+        {
+            const child = try ecs.addEntity(.{Chudling{
+                .parent = chud,
+            }});
+
+            try chud.children.put(ecs.allocator, child, {});
+        }
+
+        switch (chud.children.size) {
+            0 => std.debug.print("I am a chud with no chudlings :(\n", .{}),
+            1 => std.debug.print("I am a chud and I have 1 chudling :D\n", .{}),
+            else => std.debug.print("I am a chud and I have {} chudlings :D\n", .{
+                chud.children.size,
+            }),
+        }
+    }
 };
 
 pub const Chudling = struct {
     parent: *Chud,
+
+    pub fn proc(chudling: Chudling, ecs: *Ecs, id: Ecs.Entity, random: Ecs.Random) !void {
+        std.debug.print("I am a chudling :D\n", .{});
+        if (random.int(u6) < 32) {
+            _ = chudling.parent.children.remove(id);
+            _ = ecs.removeEntity(id);
+        }
+    }
 };
-
-pub fn chudSpawner(ecs: *Ecs, chud: *Chud) !void {
-    if (chud.max_children == null or chud.children.size < chud.max_children.?) {
-        const child = try ecs.addEntity(.{Chudling{
-            .parent = chud,
-        }});
-
-        try chud.children.put(ecs.allocator, child, {});
-    }
-
-    switch (chud.children.size) {
-        0 => std.debug.print("I am a chud with no chudlings :(\n", .{}),
-        1 => std.debug.print("I am a chud and I have 1 chudling :D\n", .{}),
-        else => std.debug.print("I am a chud and I have {} chudlings :D\n", .{
-            chud.children.size,
-        }),
-    }
-}
-
-pub fn chudlingProc(ecs: *Ecs, id: Ecs.Entity, random: Ecs.Random, chudling: Chudling) !void {
-    std.debug.print("I am a chudling :D\n", .{});
-    if (random.int(u6) < 32) {
-        _ = chudling.parent.children.remove(id);
-        _ = ecs.removeEntity(id);
-    }
-}
-```
-
-Output:
-```
-I am a chud and I have 1 chudling :D
-I am a chudling :D
-I am a chud and I have 2 chudlings :D
-I am a chudling :D
-I am a chudling :D
-I am a chud and I have 3 chudlings :D
-I am a chudling :D
-I am a chudling :D
-I am a chudling :D
-I am a chud and I have 3 chudlings :D
-I am a chudling :D
-I am a chudling :D
-I am a chudling :D
 ```
