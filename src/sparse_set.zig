@@ -46,6 +46,14 @@ pub fn SparseSet(comptime I: type, comptime T: type) type {
             return if (self.contains(idx)) self.sparse.items[idx].? else null;
         }
 
+        pub fn get(self: *Self, idx: I) ?T {
+            return self.dense.items[self.dense_index(idx) orelse return null];
+        }
+
+        pub fn getPtr(self: *Self, idx: I) ?*T {
+            return &self.dense.items[self.dense_index(idx) orelse return null];
+        }
+
         pub fn remove(self: *Self, idx: I) ?T {
             const didx = self.dense_index(idx) orelse return null;
             const last_idx = self.dense_to_sparse.getLast();

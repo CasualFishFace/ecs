@@ -153,6 +153,51 @@ fn addSystem(self: *Self, system: anytype) !void {
             };
         }
 
+        inline fn assembleArgs(
+            comptime arg_types: []const type,
+            ecs: *Self,
+            ent: Entity,
+        ) ?@Tuple(arg_types) {
+            var args: @Tuple(arg_types) = undefined;
+            const arg_fields = @typeInfo(@Tuple(arg_types)).@"struct".fields;
+            inline for (system_info.params, arg_fields) |param, field| {
+                const T = UnderlyingType(param.type.?);
+                switch (T) {
+                    Entity => @field(args, field.name) = ent,
+                    Self => {
+                        if (param.type.? != *Self)
+                            @compileError("getting `Ecs` information must be done through a pointer");
+
+                        @field(args, field.name) = ecs;
+                    },
+                    Random => {
+                        if (param.type.? != Random)
+                            @compileError("using randomness must be done with `Random`, not `*Random`");
+
+                        @field(args, field.name) = ecs.random.random();
+                    },
+                    else => {
+                        const expected_ptr_struct_enum_union =
+                            "expected a pointer or a struct, union, or enum. got `" ++
+                            @typeName(param.type.?) ++ "`";
+
+                        const erased = ecs.pools.get(@typeName(T)).?;
+                        const p = erased.downcast(T);
+                        @field(args, field.name) = switch (@typeInfo(param.type.?)) {
+                            .pointer => |v| if (v.size == .one)
+                                p.set.getPtr(ent) orelse return null
+                            else
+                                @compileError(expected_ptr_struct_enum_union),
+                            .@"struct", .@"enum", .@"union" => p.set.get(ent) orelse return null,
+                            else => @compileError(expected_ptr_struct_enum_union),
+                        };
+                    },
+                }
+            }
+
+            return args;
+        }
+
         /// `partial` is a partial application of the system passed into `addSystem`.
         /// It programmatically iterates through the parameters of the system, and
         /// reifies them into a tuple used in the function call. Most of the code is
@@ -160,41 +205,8 @@ fn addSystem(self: *Self, system: anytype) !void {
         fn partial(ecs: *Self) !void {
             comptime var arg_types: [system_info.params.len]type = undefined;
             inline for (system_info.params, 0..) |param, i| arg_types[i] = param.type.?;
-            loop: for (0..ecs.entities + 1) |entity| {
-                var args: @Tuple(&arg_types) = undefined;
-                const arg_fields = @typeInfo(@Tuple(&arg_types)).@"struct".fields;
-                inline for (system_info.params, arg_fields) |param, field| {
-                    const T = UnderlyingType(param.type.?);
-                    switch (T) {
-                        Entity => @field(args, field.name) = @truncate(entity),
-                        Self => {
-                            if (param.type.? != *Self)
-                                @compileError("getting `Ecs` information must be done through a pointer");
-
-                            @field(args, field.name) = ecs;
-                        },
-                        Random => {
-                            if (param.type.? != Random)
-                                @compileError("using randomness must be done with `Random`, not `*Random`");
-
-                            @field(args, field.name) = ecs.random.random();
-                        },
-                        else => {
-                            const erased = ecs.pools.get(@typeName(T)) orelse break :loop;
-                            const p = erased.downcast(T);
-                            const didx = p.set.dense_index(@truncate(entity)) orelse continue :loop;
-
-                            // give the field a pointer or a copy depending on the parameter of the system
-                            @field(args, field.name) = switch (@typeInfo(param.type.?)) {
-                                .pointer => |v| if (v.size == .one) &p.set.dense.items[didx],
-                                .@"struct", .@"enum", .@"union" => p.set.dense.items[didx],
-                                else => @compileError("expected a pointer to a type or a struct, union, or enum. got `" ++
-                                    @typeName(param.type.?) ++ "`"),
-                            };
-                        },
-                    }
-                }
-
+            for (0..ecs.entities + 1) |entity| {
+                const args = assembleArgs(&arg_types, ecs, @truncate(entity)) orelse continue;
                 try @call(.auto, system, args);
             }
         }
