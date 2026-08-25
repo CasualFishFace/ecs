@@ -16,20 +16,20 @@ pub fn SparseSet(comptime I: type, comptime T: type) type {
 
     return struct {
         sparse: std.ArrayList(?I),
-        dense: std.MultiArrayList(struct {
-            item: T,
-            idx: Ecs.Entity,
-        }),
+        dense: std.ArrayList(T),
+        dense_to_sparse: std.ArrayList(I),
 
         const Self = @This();
 
         pub const empty = Self{
             .sparse = .empty,
             .dense = .empty,
+            .dense_to_sparse = .empty,
         };
 
         pub const Error = error{
             Clobbered,
+            OutOfMemory,
         };
 
         pub fn deinit(self: *Self, gpa: Allocator) void {
@@ -38,19 +38,25 @@ pub fn SparseSet(comptime I: type, comptime T: type) type {
             self.* = undefined;
         }
 
-        pub fn remove(self: *Self, idx: I) ?T {
-            if (idx > self.sparse.items.len) return null;
-            const didx = self.sparse.items[idx] orelse return null;
-            const slc = self.dense.slice();
-            const sidx: Ecs.Entity = slc.items(.idx)[self.dense.len - 1];
-            const removed = slc.items(.item)[didx];
-            self.dense.swapRemove(didx);
-            self.sparse.items[idx] = null;
-            self.sparse.items[sidx] = didx;
-            return removed;
+        pub fn contains(self: *Self, idx: I) bool {
+            return idx < self.sparse.items.len and self.sparse.items[idx] != null;
         }
 
-        pub fn put(self: *Self, gpa: Allocator, idx: I, item: T) !void {
+        pub fn dense_index(self: *Self, idx: I) ?I {
+            return if (self.contains(idx)) self.sparse.items[idx].? else null;
+        }
+
+        pub fn remove(self: *Self, idx: I) ?T {
+            const didx = self.dense_index(idx) orelse return null;
+            const last_idx = self.dense_to_sparse.getLast();
+            const result = self.dense.swapRemove(didx);
+            _ = self.dense_to_sparse.swapRemove(didx);
+            self.sparse.items[last_idx] = didx;
+            self.sparse.items[idx] = null;
+            return result;
+        }
+
+        pub fn put(self: *Self, gpa: Allocator, idx: I, item: T) Allocator.Error!void {
             if (idx >= self.sparse.items.len) {
                 const new_cap = idx + 1;
                 try self.sparse.ensureTotalCapacity(gpa, new_cap);
@@ -59,12 +65,13 @@ pub fn SparseSet(comptime I: type, comptime T: type) type {
                 for (slc) |*x| x.* = null;
             }
 
-            const didx: I = @truncate(self.dense.len);
-            try self.dense.append(gpa, .{ .idx = idx, .item = item });
+            const didx: I = @truncate(self.dense.items.len);
+            try self.dense.append(gpa, item);
+            try self.dense_to_sparse.append(gpa, idx);
             self.sparse.items[idx] = didx;
         }
 
-        pub fn putNoClobber(self: *Self, gpa: Allocator, idx: I, item: T) !void {
+        pub fn putNoClobber(self: *Self, gpa: Allocator, idx: I, item: T) Error!void {
             if (self.sparse.items.len <= idx or self.sparse.items[idx]) |_|
                 return Error.Clobbered;
 

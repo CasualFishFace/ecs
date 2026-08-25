@@ -6,8 +6,10 @@ const Pool = pool.Pool;
 
 allocator: Allocator,
 entities: Entity,
+removed: std.ArrayList(Entity),
 time: Time,
 io: std.Io.Threaded,
+random: Random.DefaultPrng = .init(0),
 pools: std.StringHashMapUnmanaged(*pool.Erased),
 systems: std.ArrayList(*const fn (*Self) anyerror!void),
 deinitializers: std.ArrayList(*const fn (*Self) void),
@@ -20,9 +22,12 @@ pub const Time = struct {
     curr: std.Io.Timestamp,
 };
 
+pub const Random = std.Random;
+
 const empty: Self = .{
     .allocator = .failing,
     .entities = 0,
+    .removed = .empty,
     .time = .{ .delta = .zero, .curr = .zero },
     .io = .init_single_threaded,
     .pools = .empty,
@@ -76,6 +81,7 @@ pub fn removeEntity(self: *Self, entity: Entity) bool {
         existed = erased.*.remove(entity) or existed;
     }
 
+    if (existed) self.removed.append(self.allocator, entity) catch unreachable;
     return existed;
 }
 
@@ -83,7 +89,8 @@ pub fn addEntity(self: *Self, components: anytype) !Entity {
     if (!@typeInfo(@TypeOf(components)).@"struct".is_tuple)
         @compileError("expected a tuple of components");
 
-    const entity = self.entities;
+    const removedEntities = self.removed.items.len > 0;
+    const entity = self.removed.getLastOrNull() orelse self.entities;
     inline for (components) |component| {
         const C = @TypeOf(component);
         const name = @typeName(C);
@@ -99,7 +106,11 @@ pub fn addEntity(self: *Self, components: anytype) !Entity {
         try p.put(self.allocator, entity, component);
     }
 
-    self.entities += 1;
+    switch (removedEntities) {
+        false => self.entities += 1,
+        true => _ = self.removed.pop(),
+    }
+
     return entity;
 }
 
@@ -107,7 +118,7 @@ fn addDeinitializer(self: *Self, comptime C: type) !void {
     const name = @typeName(C);
     const gen = struct {
         fn deinit(ecs: *Self) void {
-            for (ecs.pools.get(name).?.downcast(C).set.dense.items(.item)) |*item| {
+            for (ecs.pools.get(name).?.downcast(C).set.dense.items) |*item| {
                 item.deinit(ecs);
             }
         }
@@ -136,6 +147,7 @@ fn addSystem(self: *Self, system: anytype) !void {
                     v.child
                 else
                     @compileError("expected a pointer to a single `" ++ @typeName(v.child) ++ "`"),
+                .int => if (T == Entity) T else @compileError("expected the type to be `Entity`"),
                 else => @compileError("expected a struct or a pointer to a struct. got `" ++
                     @typeName(T) ++ "`"),
             };
@@ -153,26 +165,33 @@ fn addSystem(self: *Self, system: anytype) !void {
                 const arg_fields = @typeInfo(@Tuple(&arg_types)).@"struct".fields;
                 inline for (system_info.params, arg_fields) |param, field| {
                     const T = UnderlyingType(param.type.?);
-                    if (T == Self) {
-                        if (param.type.? != *Self)
-                            @compileError("getting `Ecs` information must be done through a pointer");
+                    switch (T) {
+                        Entity => @field(args, field.name) = @truncate(entity),
+                        Self => {
+                            if (param.type.? != *Self)
+                                @compileError("getting `Ecs` information must be done through a pointer");
 
-                        @field(args, field.name) = ecs;
-                    } else {
-                        const erased = ecs.pools.get(@typeName(T)) orelse break :loop;
-                        const p = erased.downcast(T);
+                            @field(args, field.name) = ecs;
+                        },
+                        Random => {
+                            if (param.type.? != Random)
+                                @compileError("using randomness must be done with `Random`, not `*Random`");
 
-                        // entity must have ALL components to be iterated over
-                        if (entity >= p.set.sparse.items.len) continue :loop;
-                        const didx = p.set.sparse.items[entity] orelse continue :loop;
+                            @field(args, field.name) = ecs.random.random();
+                        },
+                        else => {
+                            const erased = ecs.pools.get(@typeName(T)) orelse break :loop;
+                            const p = erased.downcast(T);
+                            const didx = p.set.dense_index(@truncate(entity)) orelse continue :loop;
 
-                        // give the field a pointer or a copy depending on the parameter of the system
-                        @field(args, field.name) = switch (@typeInfo(param.type.?)) {
-                            .pointer => |v| if (v.size == .one) &p.set.dense.items(.item)[didx],
-                            .@"struct", .@"enum", .@"union" => p.set.dense.items(.item)[didx],
-                            else => @compileError("expected a pointer to a type or a struct, union, or enum. got `" ++
-                                @typeName(param.type.?) ++ "`"),
-                        };
+                            // give the field a pointer or a copy depending on the parameter of the system
+                            @field(args, field.name) = switch (@typeInfo(param.type.?)) {
+                                .pointer => |v| if (v.size == .one) &p.set.dense.items[didx],
+                                .@"struct", .@"enum", .@"union" => p.set.dense.items[didx],
+                                else => @compileError("expected a pointer to a type or a struct, union, or enum. got `" ++
+                                    @typeName(param.type.?) ++ "`"),
+                            };
+                        },
                     }
                 }
 
