@@ -1,5 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+pub const Random = std.Random;
 
 const pool = @import("pool.zig");
 const Pool = pool.Pool;
@@ -21,8 +22,6 @@ pub const Time = struct {
     delta: std.Io.Duration,
     curr: std.Io.Timestamp,
 };
-
-pub const Random = std.Random;
 
 const empty: Self = .{
     .allocator = .failing,
@@ -50,7 +49,6 @@ pub fn deinit(self: *Self) void {
     var erased_it = self.pools.valueIterator();
     for (self.deinitializers.items) |deinitializer| deinitializer(self);
     while (erased_it.next()) |erased| erased.*.destroy(self.allocator);
-
     self.systems.deinit(self.allocator);
     self.pools.deinit(self.allocator);
     self.deinitializers.deinit(self.allocator);
