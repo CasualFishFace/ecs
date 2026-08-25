@@ -2,7 +2,7 @@ const std = @import("std");
 const Ecs = @import("Ecs.zig");
 
 pub fn main(init: std.process.Init) !void {
-    var ecs = Ecs.init(init.gpa);
+    var ecs = Ecs.init(init.gpa, .{});
     defer ecs.deinit();
 
     _ = try ecs.addEntity(.{

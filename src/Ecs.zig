@@ -18,6 +18,10 @@ deinitializers: std.ArrayList(*const fn (*Self) void),
 const Self = @This();
 pub const Entity = u32;
 
+pub const Options = struct {
+    seed: u64 = 0,
+};
+
 pub const Time = struct {
     delta: std.Io.Duration,
     curr: std.Io.Timestamp,
@@ -34,9 +38,10 @@ const empty: Self = .{
     .deinitializers = .empty,
 };
 
-pub fn init(gpa: Allocator) Self {
+pub fn init(gpa: Allocator, opts: Options) Self {
     var res = Self.empty;
     res.allocator = gpa;
+    res.random.seed(opts.seed);
     res.time = .{
         .delta = .zero,
         .curr = .now(res.io.io(), .boot),
