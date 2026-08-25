@@ -155,7 +155,7 @@ fn addSystem(self: *Self, system: anytype) !void {
             comptime arg_types: []const type,
             ecs: *Self,
             ent: Entity,
-        ) ?@Tuple(arg_types) {
+        ) error{NoPool}!?@Tuple(arg_types) {
             var args: @Tuple(arg_types) = undefined;
             const arg_fields = @typeInfo(@Tuple(arg_types)).@"struct".fields;
             inline for (system_info.params, arg_fields) |param, field| {
@@ -179,7 +179,9 @@ fn addSystem(self: *Self, system: anytype) !void {
                             "expected a pointer or a struct, union, or enum. got `" ++
                             @typeName(param.type.?) ++ "`";
 
-                        const erased = ecs.pools.get(@typeName(T)).?;
+                        const erased = ecs.pools.get(@typeName(T)) orelse
+                            return error.NoPool;
+
                         const p = erased.downcast(T);
                         @field(args, field.name) = switch (@typeInfo(param.type.?)) {
                             .pointer => |v| if (v.size == .one)
@@ -204,7 +206,10 @@ fn addSystem(self: *Self, system: anytype) !void {
             comptime var arg_types: [system_info.params.len]type = undefined;
             inline for (system_info.params, 0..) |param, i| arg_types[i] = param.type.?;
             for (0..ecs.entities + 1) |entity| {
-                const args = assembleArgs(&arg_types, ecs, @truncate(entity)) orelse continue;
+                const args = assembleArgs(&arg_types, ecs, @truncate(entity)) catch {
+                    break;
+                } orelse continue;
+
                 try @call(.auto, system, args);
             }
         }
