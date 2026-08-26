@@ -5,7 +5,7 @@ of right now, but I will be documenting it all and refactoring as needed.
 This code snippet is subject to change, but as of right now, usage of my ECS looks like this:
 ```zig
 const std = @import("std");
-const Ecs = @import("Ecs.zig");
+const Ecs = @import("zcs").Ecs;
 
 pub fn main(init: std.process.Init) !void {
     var ecs = Ecs.init(init.gpa, .{});
