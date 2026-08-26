@@ -5,8 +5,8 @@ pub const Random = std.Random;
 const pool = @import("pool.zig");
 const Pool = pool.Pool;
 
-allocator: Allocator,
-entities: Entity,
+entities: Entities,
+next_entity: Entity,
 removed: std.ArrayList(Entity),
 time: Time,
 io: std.Io.Threaded,
@@ -27,9 +27,23 @@ pub const Time = struct {
     curr: std.Io.Timestamp,
 };
 
+pub const Entities = struct {
+    allocator: Allocator,
+
+    pub fn add(entities: *Entities, components: anytype) !Entity {
+        const ecs: *Self = @alignCast(@fieldParentPtr("entities", entities));
+        return ecs.addEntity(components);
+    }
+
+    pub fn remove(entities: *Entities, entity: Entity) bool {
+        const ecs: *Self = @alignCast(@fieldParentPtr("entities", entities));
+        return ecs.removeEntity(entity);
+    }
+};
+
 const empty: Self = .{
-    .allocator = .failing,
-    .entities = 0,
+    .entities = .{ .allocator = .failing },
+    .next_entity = 0,
     .removed = .empty,
     .time = .{ .delta = .zero, .curr = .zero },
     .io = .init_single_threaded,
@@ -40,7 +54,7 @@ const empty: Self = .{
 
 pub fn init(gpa: Allocator, opts: Options) Self {
     var res = Self.empty;
-    res.allocator = gpa;
+    res.entities.allocator = gpa;
     res.random.seed(opts.seed);
     res.time = .{
         .delta = .zero,
@@ -53,10 +67,10 @@ pub fn init(gpa: Allocator, opts: Options) Self {
 pub fn deinit(self: *Self) void {
     var erased_it = self.pools.valueIterator();
     for (self.deinitializers.items) |deinitializer| deinitializer(self);
-    while (erased_it.next()) |erased| erased.*.destroy(self.allocator);
-    self.systems.deinit(self.allocator);
-    self.pools.deinit(self.allocator);
-    self.deinitializers.deinit(self.allocator);
+    while (erased_it.next()) |erased| erased.*.destroy(self.entities.allocator);
+    self.systems.deinit(self.entities.allocator);
+    self.pools.deinit(self.entities.allocator);
+    self.deinitializers.deinit(self.entities.allocator);
     self.* = undefined;
 }
 
@@ -84,7 +98,7 @@ pub fn removeEntity(self: *Self, entity: Entity) bool {
         existed = erased.*.remove(entity) or existed;
     }
 
-    if (existed) self.removed.append(self.allocator, entity) catch unreachable;
+    if (existed) self.removed.append(self.entities.allocator, entity) catch unreachable;
     return existed;
 }
 
@@ -93,24 +107,24 @@ pub fn addEntity(self: *Self, components: anytype) !Entity {
         @compileError("expected a tuple of components");
 
     const removedEntities = self.removed.items.len > 0;
-    const entity = self.removed.getLastOrNull() orelse self.entities;
+    const entity = self.removed.getLastOrNull() orelse self.next_entity;
     inline for (components) |component| {
         const C = @TypeOf(component);
         const name = @typeName(C);
-        const erased = try self.pools.getOrPut(self.allocator, name);
+        const erased = try self.pools.getOrPut(self.entities.allocator, name);
         if (!erased.found_existing) {
-            const p = try self.allocator.create(Pool(C));
+            const p = try self.entities.allocator.create(Pool(C));
             if (@hasDecl(C, "deinit")) try self.addDeinitializer(C);
             p.* = .empty;
             erased.value_ptr.* = &p.erased;
         }
 
         const p = erased.value_ptr.*.downcast(C);
-        try p.put(self.allocator, entity, component);
+        try p.put(self.entities.allocator, entity, component);
     }
 
     switch (removedEntities) {
-        false => self.entities += 1,
+        false => self.next_entity += 1,
         true => _ = self.removed.pop(),
     }
 
@@ -127,7 +141,7 @@ fn addDeinitializer(self: *Self, comptime C: type) !void {
         }
     };
 
-    try self.deinitializers.append(self.allocator, gen.deinit);
+    try self.deinitializers.append(self.entities.allocator, gen.deinit);
 }
 
 /// Add a group of functions called `systems` to the ECS. These will be run
@@ -166,12 +180,13 @@ fn addSystem(self: *Self, system: anytype) !void {
             inline for (system_info.params, arg_fields) |param, field| {
                 const T = UnderlyingType(param.type.?);
                 switch (T) {
+                    Self => @compileError("cannot refer to `Ecs` within system code"),
                     Entity => @field(args, field.name) = ent,
-                    Self => {
-                        if (param.type.? != *Self)
-                            @compileError("getting `Ecs` information must be done through a pointer");
+                    Entities => {
+                        if (param.type.? != *Entities)
+                            @compileError("adding and removing entities should be done with `*Entities`, not `Entities`");
 
-                        @field(args, field.name) = ecs;
+                        @field(args, field.name) = &ecs.entities;
                     },
                     Random => {
                         if (param.type.? != Random)
@@ -210,7 +225,7 @@ fn addSystem(self: *Self, system: anytype) !void {
         fn partial(ecs: *Self) !void {
             comptime var arg_types: [system_info.params.len]type = undefined;
             inline for (system_info.params, 0..) |param, i| arg_types[i] = param.type.?;
-            for (0..ecs.entities + 1) |entity| {
+            for (0..ecs.next_entity + 1) |entity| {
                 const args = assembleArgs(&arg_types, ecs, @truncate(entity)) catch {
                     break;
                 } orelse continue;
@@ -220,5 +235,5 @@ fn addSystem(self: *Self, system: anytype) !void {
         }
     };
 
-    try self.systems.append(self.allocator, gen.partial);
+    try self.systems.append(self.entities.allocator, gen.partial);
 }
