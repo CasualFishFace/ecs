@@ -71,6 +71,7 @@ pub fn deinit(self: *Self) void {
     self.systems.deinit(self.entities.allocator);
     self.pools.deinit(self.entities.allocator);
     self.deinitializers.deinit(self.entities.allocator);
+    self.removed.deinit(self.entities.allocator);
     self.* = undefined;
 }
 

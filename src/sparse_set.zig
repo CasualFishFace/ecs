@@ -35,6 +35,7 @@ pub fn SparseSet(comptime I: type, comptime T: type) type {
         pub fn deinit(self: *Self, gpa: Allocator) void {
             self.dense.deinit(gpa);
             self.sparse.deinit(gpa);
+            self.dense_to_sparse.deinit(gpa);
             self.* = undefined;
         }
 
