@@ -44,7 +44,7 @@ pub const Chud = struct {
     pub fn spawner(chud: *Chud, entities: *Ecs.Entities, random: Ecs.Random) !void {
         if ((chud.max_children == null or
             chud.children.size < chud.max_children.?) and
-            random.int(u1) == 0)
+            random.boolean())
         {
             const child = try entities.add(.{Chudling{
                 .parent = chud,
@@ -73,7 +73,7 @@ pub const Chudling = struct {
         random: Ecs.Random,
     ) !void {
         std.debug.print("I am a chudling :D\n", .{});
-        if (random.int(u1) == 0) {
+        if (random.boolean()) {
             _ = chudling.parent.children.remove(id);
             _ = entities.remove(id);
         }
