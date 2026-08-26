@@ -43,20 +43,20 @@ pub const Chud = struct {
             _ = self.children.remove(child.*);
         }
 
-        self.children.deinit(ecs.allocator);
+        self.children.deinit(ecs.entities.allocator);
         self.* = undefined;
     }
 
-    pub fn spawner(chud: *Chud, ecs: *Ecs, random: Ecs.Random) !void {
+    pub fn spawner(chud: *Chud, entities: *Ecs.Entities, random: Ecs.Random) !void {
         if ((chud.max_children == null or
             chud.children.size < chud.max_children.?) and
             random.int(u1) == 0)
         {
-            const child = try ecs.addEntity(.{Chudling{
+            const child = try entities.add(.{Chudling{
                 .parent = chud,
             }});
 
-            try chud.children.put(ecs.allocator, child, {});
+            try chud.children.put(entities.allocator, child, {});
         }
 
         switch (chud.children.size) {
@@ -72,11 +72,16 @@ pub const Chud = struct {
 pub const Chudling = struct {
     parent: *Chud,
 
-    pub fn proc(chudling: Chudling, ecs: *Ecs, id: Ecs.Entity, random: Ecs.Random) !void {
+    pub fn proc(
+        chudling: Chudling,
+        id: Ecs.Entity,
+        entities: *Ecs.Entities,
+        random: Ecs.Random,
+    ) !void {
         std.debug.print("I am a chudling :D\n", .{});
-        if (random.int(u6) < 32) {
+        if (random.int(u1) == 0) {
             _ = chudling.parent.children.remove(id);
-            _ = ecs.removeEntity(id);
+            _ = entities.remove(id);
         }
     }
 };
