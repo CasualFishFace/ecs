@@ -34,8 +34,8 @@ pub const Chud = struct {
         };
     }
 
-    // If your object needs to be deinitialized, make sure to include the method directly inside
-    // its declarations
+    // If your object needs to be deinitialized, make sure to include the method
+    // directly inside its declarations
     pub fn deinit(self: *@This(), ecs: *Ecs) void {
         var it = self.children.keyIterator();
         while (it.next()) |child| {
